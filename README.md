@@ -145,6 +145,46 @@ Read the build from the outside in.
 | 8 | `rltrade/agents/tabular_q.py` | Bellman equations, TD learning, exploration |
 | 9 | `rltrade/envs/portfolio.py` | MDP vs POMDP, and why markets break the Markov property |
 
+## Point-in-time data (Ticket 1)
+
+`rltrade/data/loaders.py` turns three **unadjusted**, vendor-agnostic tables into an adjusted, point-in-time `Market`:
+
+| Table | Columns | Meaning |
+|---|---|---|
+| prices | date, symbol, open, high, low, close, volume | every name that was ever in the universe, dead ones included |
+| actions | date, symbol, type, value, ref_symbol | `split` (ratio), `dividend` (cash/share), `delist` (delisting return), `cash_merger` (cash/share), `stock_merger` (acquirer shares/share) |
+| membership | symbol, start, end | dated universe membership |
+
+- **Total-return adjustment:** each day's return is R = split × (close + dividend) / previous close − 1. On a delisting or merger day, R is the delisting return, and after that the position is held flat as cash.
+- **Volume:** volume becomes dollar volume divided by the adjusted price, so the impact model's q/ADV stays correct.
+- **Tradable at date t** means a member at t *and* listed at t. A name that delists tomorrow is still tradable today and takes the delisting return. The env force-sells non-members at the next open, and that overrides the overlay's turnover cap. Features, the GBM labels, the regime model and the baselines all use the same mask.
+- **Snapshots:** `data/snapshots/<hash>/{prices,actions,membership}.parquet + manifest.json`. The hash is SHA-256 over the canonicalised tables plus the adjustment-code version. It is re-checked on load, and a tampered file refuses to load. Every run records the hash.
+- **Tests** (`tests/test_pit.py`):
+  - total returns match ground truth to 1e-15 across splits and dividends;
+  - delisting and merger returns are exact, and the position goes flat afterwards;
+  - membership is respected, and the env never holds a non-member;
+  - snapshot hashes are stable and changes are detected;
+  - a deleted split is flagged by `validate()`.
+
+**Getting real survivorship-free data.** No free source covers this: it needs a vendor. For the US, use Sharadar (Nasdaq Data Link: SEP + ACTIONS + SP500, adapter included), Norgate or CRSP. For India, use NSE index-change circulars plus a delisted-securities price source. Then:
+```bash
+python scripts/snapshot.py build --source sharadar --dir vendor/sharadar      # or --source csv_pit --dir <generic csvs>
+python scripts/walkforward.py --config configs/full.yaml data.source=snapshot data.snapshot=<hash>
+```
+`configs/pit.yaml` defaults to `synthetic_pit`, a fixture with injected splits, dividends, delistings, mergers and index changes. The yfinance adapter still exists, but its snapshots are flagged `pit: false` and every report carries a warning.
+
+## The real experiment (Tickets 2–4)
+
+```bash
+python scripts/ab_turnover.py --workers 4 agent.total_steps=150000 agent.seeds=[0,1,2] split.max_folds=4   # Ticket 3 screen
+python scripts/walkforward.py --config configs/full.yaml --variant <winner> --workers 4                      # Ticket 4: 5 seeds x 600k x all folds
+mlflow ui --backend-store-uri sqlite:///runs/mlflow.db
+```
+- **Runs and logging** (`rltrade/eval/walkforward.py`): the (fold, seed) jobs run in a process pool. Every job is one MLflow run (`kind=seed_run`) carrying the full flattened config, seed, fold, data hash, config hash, validation curve and test metrics at 1×, 2× and 3× costs.
+- **Report** (`rltrade/eval/report.py`): stitched out-of-sample results, the **median and worst seed** (the best seed is shown but never used), cost stress, a Hurst/entropy regime split (`rltrade/features/regime_he.py`, thresholds fitted on each fold's training rows), and a DSR whose N is **every distinct config ever logged on that data hash**.
+- **Gate (Ticket 4):** the median seed's out-of-sample Sharpe at 2× costs must beat **GBM + no-trade band** at 2× costs. If it fails, the report says to ship that rule and archive the RL allocator.
+- **Reward variants** (`reward.kind`): `dsr` (Sharpe-style), `turnover` (log return − κ·turnover), `cvar` (Rockafellar–Uryasev CVaR penalty). `reward.turnover_penalty` adds κ on top of any of them. The fixed no-trade band is `env.band` with `env.learned_band: false`.
+
 ## Data note
 
 `data.source: yfinance` pulls the 50-name multi-asset universe (`rltrade/data/loader.py`) and caches it. yfinance is **not** point-in-time and **not** free of survivorship bias, so use a vendor feed for production and keep the `Market` interface. If the network is unavailable, the loader falls back to the regime-switching GARCH synthetic market, which has a weak planted cross-sectional edge. Results on synthetic data validate the pipeline. They say nothing about real markets.
