@@ -5,8 +5,8 @@ baseline, net of 2x costs, at the MEDIAN seed, out of sample. Best-seed numbers 
 shown for completeness and never used for a decision. If the gate fails, the
 verdict is: ship the GBM + no-trade-band rule, archive the RL allocator as research.
 
-Deflated Sharpe: N = number of distinct configs ever logged to MLflow on this data
-hash (every A/B variant, every HPO trial), V[SR] from their validation Sharpes.
+Deflated Sharpe: N = number of grid runs ever logged to MLflow on this data hash
+(every A/B variant, every rerun, every HPO trial), V[SR] from their validation Sharpes.
 """
 from __future__ import annotations
 
@@ -49,7 +49,10 @@ def trial_stats(cfg: dict, data_hash: str) -> dict:
         return {"n_configs": 1, "n_runs": 0, "trial_sr_pp": None}
     if runs.empty:
         return {"n_configs": 1, "n_runs": 0, "trial_sr_pp": None}
-    per_cfg = runs.groupby("tags.cfg_hash")["metrics.val_sharpe"].mean() / np.sqrt(252)
+    # every grid run is a trial: the same config re-run on changed code (e.g. the band-order
+    # fix) is a new look at the data, so group by grid, not by config hash
+    key = "tags.grid_id" if "tags.grid_id" in runs else "tags.cfg_hash"
+    per_cfg = runs.groupby(key)["metrics.val_sharpe"].mean() / np.sqrt(252)
     return {"n_configs": int(per_cfg.size), "n_runs": int(len(runs)),
             "trial_sr_pp": per_cfg.to_numpy() if per_cfg.size > 1 else None}
 
@@ -130,7 +133,7 @@ def build_report(cfg: dict, variant: str, fold_outs: list[dict], out: Path, data
              "## Cost stress (Sharpe, OOS)", "", _table(stress), "",
              "## Regimes (Hurst/entropy classifier, 2x costs)", "", _table(regimes) if len(regimes) else "_n/a_", "",
              "## Deflated Sharpe (RL ensemble, 1x)", "",
-             f"- distinct configs on this data hash (MLflow): {dsr['n_trials']} ({dsr['n_runs_logged']} seed runs)",
+             f"- trials (grid runs) on this data hash (MLflow): {dsr['n_trials']} ({dsr['n_runs_logged']} seed runs)",
              f"- expected max Sharpe under the null (annualised): {dsr['sr0_annual']:.3f}",
              f"- PSR(SR>0) {dsr['psr_0']:.3f} | **DSR {dsr['dsr']:.3f}**", "",
              "## Behaviour audit", "",
