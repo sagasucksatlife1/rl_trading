@@ -1,0 +1,12 @@
+[project]
+name = "rltrade"
+version = "1.0.0"
+description = "Project 24: RL as a decision engine on top of a proven forecast - allocation, execution, market making"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["rltrade*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::RuntimeWarning", "ignore::UserWarning", "ignore::DeprecationWarning"]

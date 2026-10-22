@@ -1,0 +1,14 @@
+# Fast end-to-end smoke run (minutes on a laptop CPU): small universe, short training.
+defaults: [default.yaml]
+data: {n_assets: 10, n_days: 2600}
+signal: {min_train: 504, refit: 126}
+split: {mode: single}
+agent:
+  algo: ppo
+  seeds: [0, 1, 2]
+  ensemble_top_k: 2
+  total_steps: 60000
+  eval_every: 10000
+  patience: 4
+  n_envs: 4
+  ppo: {shared_asset_policy: true, n_steps: 512}

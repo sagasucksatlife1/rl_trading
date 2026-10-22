@@ -1,0 +1,6 @@
+# Challenger: SAC (off-policy, max-entropy) on the same env.
+defaults: [default.yaml]
+agent:
+  algo: sac
+  n_envs: 1
+  total_steps: 500000

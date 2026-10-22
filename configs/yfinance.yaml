@@ -1,0 +1,4 @@
+# Real data: 50-name multi-asset universe from yfinance (falls back to synthetic offline).
+defaults: [default.yaml]
+data: {source: yfinance, start: "2007-01-01"}
+env: {n_assets: null}

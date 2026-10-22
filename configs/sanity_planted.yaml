@@ -1,0 +1,11 @@
+# Sanity test 1: planted-signal market. The agent MUST find the edge.
+defaults: [default.yaml]
+data: {source: planted, n_assets: 5, n_days: 3000, signal_ic: 0.25}
+signal: {enabled: false}
+features: {regime: false}
+env: {window: 1, learned_band: false, cost_mult_range: [0.0, 0.0], random_init_weights: false}
+costs: {commission_bps: 0.0, half_spread_bps: 0.0, impact_coef: 0.0}
+risk: {enabled: false}
+reward: {kind: log}
+split: {mode: single}
+agent: {algo: ppo, seeds: [0], total_steps: 150000, eval_every: 15000, patience: 6, ppo: {shared_asset_policy: true}}

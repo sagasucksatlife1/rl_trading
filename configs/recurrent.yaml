@@ -1,0 +1,4 @@
+# Alternative main agent: RecurrentPPO (LSTM over single-day observations).
+defaults: [default.yaml]
+env: {window: 1}
+agent: {algo: recurrent_ppo}
