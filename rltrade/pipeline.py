@@ -40,7 +40,7 @@ def fold_envdata(market: Market, fs: FeatureSet, train_rows: tuple[int, int], cf
     fs.extra.pop("gbm_models", None)
     tr = slice(*train_rows)
     if cfg_get(cfg, "features.regime", True):
-        add_regime_features(fs, market.close, tr, seed=cfg_get(cfg, "seed", 0))
+        add_regime_features(fs, market.close, tr, seed=cfg_get(cfg, "seed", 0), tradable=market.tradable)
     first = fs.first_valid()
     lo = max(train_rows[0], first)
     norm = Normalizer(cfg_get(cfg, "features.clip", 5.0)).fit(fs, slice(lo, train_rows[1]))

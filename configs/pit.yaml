@@ -1,0 +1,6 @@
+# Point-in-time universe through a hashed snapshot. Default here = the synthetic PIT
+# fixture (splits, dividends, delistings, mergers, index changes). For real data:
+#   python scripts/snapshot.py build --source sharadar --dir vendor/sharadar
+#   then data.source=snapshot data.snapshot=<hash>
+defaults: [default.yaml]
+data: {source: synthetic_pit, n_symbols: 30, n_assets: 20, n_days: 4000, signal_ic: 0.05}

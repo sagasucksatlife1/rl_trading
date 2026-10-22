@@ -25,6 +25,11 @@ class Market:
     name: str = "market"
     # Only set for synthetic markets: the true expected next-day return (for diagnostics).
     true_alpha: pd.DataFrame | None = None
+    # Point-in-time tradability [dates x assets]: index member AND listed on that date.
+    # None = every asset tradable every day (legacy / synthetic markets).
+    tradable: pd.DataFrame | None = None
+    # Snapshot manifest (hash, source, pit flag, ...) when loaded from data/snapshots/.
+    meta: dict | None = None
 
     @property
     def assets(self) -> list[str]:
@@ -38,9 +43,17 @@ class Market:
         sl = slice(start, end)
         cols = assets or self.assets
         pick = lambda df: None if df is None else df.loc[sl, cols]
-        return Market(pick(self.open), pick(self.close), pick(self.volume), self.name, pick(self.true_alpha))
+        return Market(pick(self.open), pick(self.close), pick(self.volume), self.name, pick(self.true_alpha),
+                      pick(self.tradable), self.meta)
+
+    def tradable_mask(self) -> np.ndarray:
+        if self.tradable is None:
+            return np.ones(self.close.shape, dtype=bool)
+        return self.tradable.to_numpy(dtype=bool)
 
     def data_hash(self) -> str:
+        if self.meta and self.meta.get("hash"):
+            return self.meta["hash"][:10]
         import hashlib
 
         h = hashlib.sha1()

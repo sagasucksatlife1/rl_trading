@@ -56,7 +56,11 @@ def walk_forward_signal(fs: FeatureSet, open_: pd.DataFrame, horizon: int = 21, 
                         conf_window: int = 126) -> dict:
     T, N, F = fs.asset.shape
     X_all = fs.asset  # raw features (trees are scale-free)
-    y_rank = _xs_rank(forward_labels(open_, horizon))
+    tradable = fs.extra.get("tradable")
+    lab = forward_labels(open_, horizon)
+    if tradable is not None:  # learn and rank only within the point-in-time universe
+        lab = np.where(tradable, lab, np.nan)
+    y_rank = _xs_rank(lab)
     start = fs.first_valid()
     pred = np.full((T, N), np.nan)
     models = []
@@ -71,11 +75,17 @@ def walk_forward_signal(fs: FeatureSet, open_: pd.DataFrame, horizon: int = 21, 
         blk = slice(d, min(d + refit, T))
         Xb = X_all[blk].reshape(-1, F)
         pred[blk] = model.predict(np.nan_to_num(Xb)).reshape(-1, N)
+        if tradable is not None:
+            pred[blk] = np.where(tradable[blk], pred[blk], np.nan)
         models.append((d, model))
     mu = np.nanmean(pred, axis=1, keepdims=True)
     sd = np.nanstd(pred, axis=1, keepdims=True) + 1e-12
     score = (pred - mu) / sd
     rank = _xs_rank(pred)
+    # names outside the point-in-time universe get a neutral score on rows with predictions
+    has = np.isfinite(pred).any(axis=1, keepdims=True)
+    score = np.where(has & ~np.isfinite(score), 0.0, score)
+    rank = np.where(has & ~np.isfinite(rank), 0.0, rank)
     # Realised IC for row t is known at t+1+h; lag by h+1 before rolling.
     ic = pd.Series([_spearman(pred[t], y_rank[t]) for t in range(T)], index=fs.dates)
     conf = ic.shift(horizon + 1).rolling(conf_window, min_periods=21).mean().to_numpy()

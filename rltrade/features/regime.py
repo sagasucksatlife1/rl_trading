@@ -81,15 +81,17 @@ class GaussianHMM:
         return self._forward(self._emission(X))[0]
 
 
-def regime_observations(close) -> np.ndarray:
-    r = np.log(close).diff().mean(axis=1)
+def regime_observations(close, tradable=None) -> np.ndarray:
+    r = np.log(close).diff()
+    r = (r.where(tradable) if tradable is not None else r).mean(axis=1)
     rv = r.rolling(21).std()
     return np.column_stack([r.to_numpy(), np.log(rv.to_numpy() + 1e-8)])
 
 
-def add_regime_features(fs, close, train_rows: slice, n_states: int = 2, seed: int = 0) -> GaussianHMM:
+def add_regime_features(fs, close, train_rows: slice, n_states: int = 2, seed: int = 0,
+                        tradable=None) -> GaussianHMM:
     """Fit on train rows, add filtered P(turbulent) to the global features."""
-    X = regime_observations(close)
+    X = regime_observations(close, tradable)
     ok = np.isfinite(X).all(1)
     tr_idx = np.arange(len(X))[train_rows]
     tr_idx = tr_idx[ok[tr_idx]]

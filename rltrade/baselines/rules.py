@@ -24,7 +24,14 @@ class _Periodic:
         self.i += 1
         if not trade:
             return None, 0.0
-        return self.target(env), self.band
+        w = np.asarray(self.target(env), dtype=np.float64)
+        m = env.tradable_now()
+        if not m.all():  # restrict to the point-in-time universe, keep the same gross exposure
+            g = np.abs(w).sum()
+            w = np.where(m, w, 0.0)
+            if np.abs(w).sum() > 0 and env.c["action_mode"] == "long_only":
+                w *= g / np.abs(w).sum()
+        return w, self.band
 
     def target(self, env) -> np.ndarray:
         raise NotImplementedError

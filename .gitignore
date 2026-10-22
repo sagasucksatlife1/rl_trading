@@ -5,3 +5,4 @@ live_state/
 data_cache/
 .pytest_cache/
 mlruns/
+data/snapshots/

@@ -38,8 +38,12 @@ class FeatureSet:
         self.glob_names.append(name)
 
     def first_valid(self) -> int:
-        """First row where every feature is finite."""
-        ok = np.isfinite(self.asset).all(axis=(1, 2)) & np.isfinite(self.glob).all(axis=1)
+        """First row where every feature of every TRADABLE name (and every global) is finite."""
+        tr = self.extra.get("tradable")
+        fin = np.isfinite(self.asset).all(axis=2)
+        if tr is not None:
+            fin = fin | ~tr
+        ok = fin.all(axis=1) & np.isfinite(self.glob).all(axis=1)
         return int(np.argmax(ok)) if ok.any() else len(ok)
 
 
@@ -76,8 +80,10 @@ def asset_features(close: pd.DataFrame, volume: pd.DataFrame) -> dict[str, pd.Da
     return feats
 
 
-def global_features(close: pd.DataFrame) -> dict[str, pd.Series]:
+def global_features(close: pd.DataFrame, tradable: pd.DataFrame | None = None) -> dict[str, pd.Series]:
     r = np.log(close).diff()
+    if tradable is not None:  # market aggregates over the point-in-time universe only
+        r = r.where(tradable)
     mkt = r.mean(axis=1)
     sd = r.rolling(63).std()
     port_var = mkt.rolling(63).var()
@@ -98,12 +104,20 @@ def global_features(close: pd.DataFrame) -> dict[str, pd.Series]:
 
 def build_features(market: Market) -> FeatureSet:
     af = asset_features(market.close, market.volume)
-    gf = global_features(market.close)
+    gf = global_features(market.close, market.tradable)
     names = list(af)
     A = np.stack([af[k].to_numpy(dtype=np.float64) for k in names], axis=2)
     gnames = list(gf)
     G = np.column_stack([gf[k].to_numpy(dtype=np.float64) for k in gnames])
-    return FeatureSet(market.dates, market.assets, A, names, G, gnames)
+    fs = FeatureSet(market.dates, market.assets, A, names, G, gnames)
+    mask = market.tradable_mask()
+    fs.extra["tradable"] = mask
+    # outside the universe (pre-listing back-fill, post-delisting flat price) features are
+    # meaningless (e.g. 0/0 Hurst); give them neutral zeros so they never poison a row
+    fs.asset[~mask] = np.nan_to_num(fs.asset[~mask], nan=0.0, posinf=0.0, neginf=0.0)
+    if market.tradable is not None:
+        fs.add_asset_feature("is_tradable", mask.astype(np.float64))
+    return fs
 
 
 class Normalizer:

@@ -44,6 +44,7 @@ class EnvData:
     feat_names: list[str]
     glob_names: list[str]
     first_row: int  # first row with valid features & signal
+    tradable: np.ndarray | None = None  # [T, N] point-in-time universe (member AND listed)
 
     @classmethod
     def build(cls, market: Market, fs_norm: FeatureSet, first_row: int,
@@ -54,7 +55,8 @@ class EnvData:
         sigma, adv = liquidity_inputs(close, market.volume.to_numpy(dtype=np.float64))
         return cls(np.asarray(market.dates), list(market.assets), market.open.to_numpy(dtype=np.float64),
                    close, sigma, adv, fs_norm.asset[:, :, idx].astype(np.float32),
-                   fs_norm.glob.astype(np.float32), list(names), list(fs_norm.glob_names), first_row)
+                   fs_norm.glob.astype(np.float32), list(names), list(fs_norm.glob_names), first_row,
+                   market.tradable_mask() if market.tradable is not None else None)
 
     @property
     def n_rows(self) -> int:
@@ -117,6 +119,12 @@ class PortfolioEnv(gym.Env):
         self.t = lo
 
     # ---------- helpers ----------
+    def tradable_now(self) -> np.ndarray:
+        """Point-in-time tradability of the episode's assets at decision row t."""
+        if self.d.tradable is None:
+            return np.ones(self.k, dtype=bool)
+        return self.d.tradable[self.t, self.assets]
+
     def _cov(self, t: int) -> np.ndarray:
         w = self.c["cov_window"]
         r = self.lr[max(1, t - w + 1): t + 1][:, self.assets]
@@ -131,12 +139,14 @@ class PortfolioEnv(gym.Env):
         if self.c["learned_band"]:
             band = (a[-1] + 1) / 2 * self.c["band_max"]
             a = a[:-1]
+        m = self.tradable_now()
         if self.c["action_mode"] == "long_only":
             z = a * self.c["temperature"]
+            z[: self.k] = np.where(m, z[: self.k], -np.inf)  # mass flows to tradable names + cash
             e = np.exp(z - z.max())
             w = (e / e.sum())[: self.k]
         else:
-            w = a.copy()
+            w = np.where(m, a, 0.0)
             g = np.abs(w).sum()
             if g > self.c["max_gross"]:
                 w *= self.c["max_gross"] / g
@@ -226,10 +236,13 @@ class PortfolioEnv(gym.Env):
             target = current.copy()
         target = self.apply_band(np.asarray(target, dtype=np.float64), current, band,
                                  self.c["action_mode"] == "long_only")
+        # names that left the universe / delisted are sold at this open, whatever the band says
+        target = np.where(self.tradable_now(), target, 0.0)
         flags: dict = {}
         if self.overlay is not None:
             self.overlay.update_nav(self.nav)
             target, flags = self.overlay.apply(target, current, self._cov(t))
+            target = np.where(self.tradable_now(), target, 0.0)  # forced exits beat the turnover cap
         dw = target - current
         turnover = float(np.abs(dw).sum())
         cost = self.cost.cost(dw, self.nav * self.c["nav0"], self.d.open[t + 1, a], self.d.adv[t, a],
