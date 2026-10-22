@@ -93,3 +93,23 @@ def test_splits_purged_and_ordered():
         assert a.test[1] == b.test[0]  # OOS blocks tile without overlap
     for fo in folds:
         assert fo.train[1] + 26 <= fo.val[0] and fo.val[1] + 26 <= fo.test[0]
+
+
+def test_turnover_penalty_variants():
+    a = Reward(kind="turnover", turnover_penalty=0.002, scale=1.0)
+    assert a(0.01, turnover=0.5) == pytest.approx(np.log1p(0.01) - 0.001)
+    b = Reward(kind="log", turnover_penalty=0.002, scale=1.0)
+    assert b(0.01, turnover=0.5) == pytest.approx(np.log1p(0.01) - 0.001)
+    c0, c1 = Reward(kind="dsr"), Reward(kind="dsr", turnover_penalty=0.002)
+    assert c1(0.01, turnover=1.0) < c0(0.01, turnover=1.0)
+
+
+def test_cvar_reward_penalises_tail_only():
+    rng = np.random.default_rng(0)
+    r = Reward(kind="cvar", lam=1.0, scale=1.0, cvar_alpha=0.05)
+    for x in rng.normal(0, 0.01, 100):
+        r(x)
+    small = r(-0.001)
+    assert small == pytest.approx(np.log1p(-0.001))  # inside VaR: no penalty
+    big = r(-0.08)
+    assert big < np.log1p(-0.08) - 0.5  # tail loss: heavy penalty

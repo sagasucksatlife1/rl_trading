@@ -43,7 +43,7 @@ class Tracker:
             try:
                 import mlflow
 
-                mlflow.set_tracking_uri(f"file://{self.root / 'mlruns'}")
+                mlflow.set_tracking_uri(f"sqlite:///{self.root / 'mlflow.db'}")
                 mlflow.set_experiment(cfg_get(cfg, "tracking.experiment", "project24"))
                 mlflow.start_run(run_name=self.run_id)
                 mlflow.log_params({k: str(v)[:250] for k, v in _flatten(cfg).items()})

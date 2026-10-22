@@ -260,7 +260,7 @@ class PortfolioEnv(gym.Env):
         self.nav_close = self.nav * gc
         self.peak = max(self.peak, self.nav_close)
         self.w_open = target
-        reward = self.reward_fn(r_net)
+        reward = self.reward_fn(r_net, turnover)
         # nav after the hold period is realised at open t+2 (the next step drifts with R_now)
         self.t += 1
         terminated = False

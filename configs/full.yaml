@@ -1,0 +1,12 @@
+# Ticket 2: the real experiment. 5 seeds x 600k steps x expanding walk-forward folds,
+# purge + embargo, point-in-time data through a hashed snapshot, MLflow on.
+defaults: [pit.yaml]
+agent:
+  seeds: [0, 1, 2, 3, 4]
+  total_steps: 600000
+  eval_every: 25000
+  patience: 8
+  ensemble_top_k: 3
+split: {mode: walk_forward, min_train: 756, val_len: 252, test_len: 252, purge: 21, embargo: 5}
+tracking: {mlflow: true, experiment: project24}
+eval: {regime_q: 0.6}
