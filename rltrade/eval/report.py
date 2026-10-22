@@ -105,6 +105,12 @@ def build_report(cfg: dict, variant: str, fold_outs: list[dict], out: Path, data
                f"FAIL - median-seed Sharpe at 2x costs {med2:.2f} <= GBM+no-trade-band {base2:.2f} "
                f"(ensemble {ens2:.2f}, worst seed {seed_stats.loc['worst', 'sharpe_2x']:.2f}). "
                "Ship the GBM+no-trade-band rule; archive the RL allocator as research.")
+    # A verdict only counts on real, point-in-time vendor data. Anything synthetic (or
+    # survivorship-biased) is a DRY RUN of the machinery, never the Ticket 4 decision.
+    src = str((data_meta or {}).get("source", cfg_get(cfg, "data.source", "?")))
+    real = (data_meta or {}).get("pit") is True and not src.startswith("synthetic")
+    if not real:
+        verdict = (f"DRY RUN ({src} data, not a real-data verdict): would read as -> {verdict}")
     audit = behaviour_audit(st["rl_ensemble"][1.0], bench)
 
     # 7. write
@@ -136,6 +142,7 @@ def build_report(cfg: dict, variant: str, fold_outs: list[dict], out: Path, data
     for n in names:
         st[n][1.0].drop(columns=["weights", "overlay"]).to_csv(out / f"oos_{n}.csv")
     res = {"variant": variant, "grid_id": grid_id, "data_hash": data_hash, "passed": passed, "verdict": verdict,
+           "real_data": real,
            "summary": summary.to_dict(orient="index"), "seed_stats": seed_stats.to_dict(orient="index"),
            "stress": stress.to_dict(orient="index"), "dsr": dsr, "audit": audit,
            "gate": {"median_seed_2x": med2, "baseline_2x": base2, "ensemble_2x": ens2}}
@@ -168,10 +175,14 @@ def compare_variants(reports: list[dict], out: Path) -> str:
                      "rl_median_seed_2x": ss["median"]["sharpe_2x"], "rl_worst_seed_2x": ss["worst"]["sharpe_2x"],
                      "1/N_2x": stv["equal_weight_monthly"]["2x"], "gbm_linear_2x": stv["gbm_linear_monthly"]["2x"],
                      "gbm_mv_2x": stv["gbm_mean_variance"]["2x"], "gbm_band_2x": stv[GATE_BASELINE]["2x"],
-                     "dsr": r["dsr"]["dsr"], "gate": "PASS" if r["passed"] else "FAIL"})
+                     "dsr": r["dsr"]["dsr"],
+                     "gate": ("PASS" if r["passed"] else "FAIL") + ("" if r.get("real_data") else " (dry run)")})
     df = pd.DataFrame(rows).set_index("variant")
-    md = "# Ticket 3: turnover fixes, A/B\n\nSharpe ratios out of sample. Gate = median seed at 2x costs " \
-         "must beat `gbm_band_2x` (GBM + no-trade band).\n\n" + _table(df) + "\n"
+    dry = not all(r.get("real_data") for r in reports)
+    md = "# Ticket 3: turnover fixes, A/B\n\n" + ("> DRY RUN on synthetic / non-PIT data: this tests the fix "
+         "mechanisms, it is NOT a verdict. Rerun on a vendor snapshot.\n\n" if dry else "") + \
+         "Sharpe ratios out of sample. Gate = median seed at 2x costs must beat `gbm_band_2x` " \
+         "(GBM + no-trade band).\n\n" + _table(df) + "\n"
     (out / "ab_comparison.md").write_text(md)
     df.to_csv(out / "ab_comparison.csv")
     return md
