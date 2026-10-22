@@ -4,6 +4,7 @@
   band       DSR reward, fixed no-trade band b          (tunable: --band)
   penalty    log return - kappa * turnover              (tunable: --kappa)
   cvar       log return - CVaR (Rockafellar-Uryasev)    (+ learned band)
+  band+pen   fixed band b AND turnover penalty kappa
 
 Each variant re-runs the full baseline comparison (1/N, GBM-linear, GBM-MV,
 GBM+no-trade-band). Output: runs/ab/<stamp>/ab_comparison.md
@@ -23,6 +24,7 @@ VARIANTS = {
     "band_fixed": {"reward.kind": "dsr", "env.learned_band": False},  # env.band set from --band
     "turnover_penalty": {"reward.kind": "turnover", "env.learned_band": True},  # kappa from --kappa
     "cvar_reward": {"reward.kind": "cvar", "reward.lam": 0.5, "env.learned_band": True},
+    "band_plus_penalty": {"reward.kind": "turnover", "env.learned_band": False},  # --band and --kappa
 }
 
 
@@ -41,9 +43,9 @@ def main():
         if args.only and name not in args.only:
             continue
         over = dict(over)
-        if name == "band_fixed":
+        if name in ("band_fixed", "band_plus_penalty"):
             over["env.band"] = args.band
-        if name == "turnover_penalty":
+        if name in ("turnover_penalty", "band_plus_penalty"):
             over["reward.turnover_penalty"] = args.kappa
         c = quick_cfg(cfg, **over)
         g = run_grid(c, name, args.workers)

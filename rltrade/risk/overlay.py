@@ -92,6 +92,22 @@ class RiskOverlay:
                 flags["turnover_cap"] = round(float(to), 4)
         return w, flags
 
+    def enforce_limits(self, w: np.ndarray) -> np.ndarray:
+        """Static hard limits only (weight cap, gross, net); no vol target or turnover cap.
+        Used after the no-trade band so a position the band kept can never breach a limit."""
+        if not self.enabled:
+            return w
+        w = np.clip(np.maximum(w, 0.0) if self.long_only else w, -self.max_weight, self.max_weight)
+        g = np.abs(w).sum()
+        if g > self.max_gross:
+            w = w * self.max_gross / g
+        net = w.sum()
+        if net > self.max_net and (w > 0).any():
+            w = np.where(w > 0, w * (1 - (net - self.max_net) / w[w > 0].sum()), w)
+        elif net < self.min_net and (w < 0).any():
+            w = np.where(w < 0, w * (1 - (net - self.min_net) / w[w < 0].sum()), w)
+        return w
+
     @classmethod
     def from_cfg(cls, d: dict | None) -> "RiskOverlay":
         d = dict(d or {})

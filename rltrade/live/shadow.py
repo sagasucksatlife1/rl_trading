@@ -106,15 +106,16 @@ def run_daily(cfg: dict, model_dir: Path, market: Market, broker: Broker, state_
     obs = env._obs()
     target, band = policy(obs, env)
 
-    # 4. band + overlay with persisted kill-switch state
-    target = env.apply_band(np.asarray(target), w_live, band, env.c["action_mode"] == "long_only")
+    # 4. overlay (persisted kill-switch state) then band: same code path as the backtest env
+    target = np.asarray(target)
     flags = {}
     if env.overlay is not None:
         ov = env.overlay
         ov._peak, ov._killed_for = st["overlay"]["peak"], st["overlay"]["killed_for"]
         ov.update_nav(equity / st["start"])
-        target, flags = ov.apply(target, w_live, env._cov(T - 1))
-        st["overlay"] = {"peak": ov._peak, "killed_for": ov._killed_for}
+    target, flags = env.execute_target(target, w_live, band, T - 1, update_nav=False)
+    if env.overlay is not None:
+        st["overlay"] = {"peak": env.overlay._peak, "killed_for": env.overlay._killed_for}
     target_w = {data.assets[i]: float(w) for i, w in zip(a, target) if w > 1e-6}
 
     # 5. orders

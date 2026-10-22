@@ -53,3 +53,39 @@ def test_long_only_weights_valid(prepared):
         assert (w >= -1e-12).all() and w.sum() <= 1 + 1e-9
         if te or tr:
             env.reset()
+
+
+def test_band_applies_to_executable_target_no_churn(prepared):
+    """A constant target the overlay must cut (over the weight cap) used to be re-traded
+    every day: the band compared holdings with a target that was never executable."""
+    cfg, _, _, fold, data = prepared
+    c = {**cfg, "risk": {"enabled": True, "max_weight": 0.25, "vol_target": None, "max_turnover": None,
+                         "dd_kill": None}, "env": {"band": 0.03, "learned_band": False, "window": 1}}
+    env = make_env(data, fold.test, c, train=False, overlay=True)
+    env.reset()
+    want = np.zeros(env.k)
+    want[0] = 0.6  # always asks for 60% in one name: executable max is 25%
+    tos = []
+    for _ in range(30):
+        _, _, te, tr, info = env.step_weights(want.copy())
+        tos.append(info["turnover"])
+        assert info["weights"][0] <= 0.25 + 1e-12
+        if te or tr:
+            break
+    assert tos[0] > 0.2  # it buys once
+    assert np.mean(tos[5:]) < 0.01  # then the band holds instead of churning against the cap
+
+
+def test_kill_switch_beats_band(prepared):
+    from rltrade.risk.overlay import RiskOverlay
+
+    cfg, _, _, fold, data = prepared
+    env = make_env(data, fold.test, {**cfg, "env": {"band": 0.5, "learned_band": False, "window": 1}},
+                   train=False, overlay=True)
+    env.reset()
+    env.overlay = RiskOverlay(dd_kill=0.01, cooldown=5, vol_target=None, max_turnover=None)
+    env.overlay.reset(1.0)
+    env.overlay._killed_for = 3
+    cur = np.full(env.k, 0.04)
+    w, flags = env.execute_target(cur.copy(), cur, band=0.5, t=env.t, update_nav=False)
+    assert flags.get("kill_switch") and np.allclose(w, 0)

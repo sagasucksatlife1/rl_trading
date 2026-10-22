@@ -161,6 +161,30 @@ class PortfolioEnv(gym.Env):
             w = w / w.sum()
         return w
 
+    def execute_target(self, target: np.ndarray, current: np.ndarray, band: float, t: int,
+                       update_nav: bool = True) -> tuple[np.ndarray, dict]:
+        """Policy target -> executed weights. Shared by the backtest env and the live loop.
+
+        Order matters. The overlay first PROJECTS the target onto the feasible set (kill
+        switch, caps, vol target, turnover cap); the no-trade band is then applied to that
+        EXECUTABLE target. Banding the raw target instead (the old order) compared current
+        holdings with weights the overlay would never allow, so the band never bit and the
+        book churned every day (~150x/yr pre-overlay turnover in the Ticket 3 dry run).
+        """
+        long_only = self.c["action_mode"] == "long_only"
+        m = self.tradable_now()
+        target = np.where(m, target, 0.0)  # names out of the universe are sold, whatever happens
+        flags: dict = {}
+        if self.overlay is not None:
+            if update_nav:
+                self.overlay.update_nav(self.nav)
+            target, flags = self.overlay.apply(target, current, self._cov(t))
+        if not (self.overlay is not None and self.overlay.killed):  # the kill switch beats the band
+            target = self.apply_band(target, current, band, long_only)
+            if self.overlay is not None:  # positions the band kept must still meet hard limits
+                target = self.overlay.enforce_limits(target)
+        return np.where(m, target, 0.0), flags
+
     def _obs_single(self, t: int) -> np.ndarray:
         a = self.assets
         port = np.concatenate([self.w_close, [1.0 - self.w_close.sum()]])
@@ -231,18 +255,10 @@ class PortfolioEnv(gym.Env):
         g = 1.0 + self.w_open @ R_now
         current = self.w_open * (1.0 + R_now) / g
         self.nav *= g
-        # 2. band, overlay, trade at open t+1 (target None = hold, no trade)
+        # 2. decide what is executable, then trade at open t+1 (target None = hold, no trade)
         if target is None:
             target = current.copy()
-        target = self.apply_band(np.asarray(target, dtype=np.float64), current, band,
-                                 self.c["action_mode"] == "long_only")
-        # names that left the universe / delisted are sold at this open, whatever the band says
-        target = np.where(self.tradable_now(), target, 0.0)
-        flags: dict = {}
-        if self.overlay is not None:
-            self.overlay.update_nav(self.nav)
-            target, flags = self.overlay.apply(target, current, self._cov(t))
-            target = np.where(self.tradable_now(), target, 0.0)  # forced exits beat the turnover cap
+        target, flags = self.execute_target(np.asarray(target, dtype=np.float64), current, band, t)
         dw = target - current
         turnover = float(np.abs(dw).sum())
         cost = self.cost.cost(dw, self.nav * self.c["nav0"], self.d.open[t + 1, a], self.d.adv[t, a],
