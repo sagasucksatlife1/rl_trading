@@ -1,12 +1,12 @@
 [project]
 name = "rltrade"
 version = "1.0.0"
-description = "Project 24: RL as a decision engine on top of a proven forecast - allocation, execution, market making"
+description = "Project 24: GBM cross-sectional strategy with a no-trade band and hard risk overlay; RL allocator archived as research"
 requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
-include = ["rltrade*"]
+include = ["rltrade*", "research*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "research/rl_allocator/tests"]
 filterwarnings = ["ignore::RuntimeWarning", "ignore::UserWarning", "ignore::DeprecationWarning"]

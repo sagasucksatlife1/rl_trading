@@ -1,28 +1,29 @@
 PY ?= python3
+RL = research/rl_allocator
 
-.PHONY: install test sanity quick train sac walkforward hpo frontier shadow offline clean
+.PHONY: install test snapshot backtest fit shadow paper research-sanity research-ab clean
 
-install:      ## dependencies
+# ---- shipped strategy: GBM score -> linear weights, no-trade band, risk overlay ----
+install:     ## dependencies
 	$(PY) -m pip install -r requirements.txt
-test:         ## unit tests: look-ahead, accounting, costs, rewards, overlay, DSR, splits, envs
+test:        ## all tests (strategy + archived research)
 	$(PY) -m pytest -q
-sanity:       ## planted-signal, pure-noise, accounting, from-scratch agents
-	$(PY) scripts/sanity.py
-quick:        ## end-to-end smoke run (single split, 3 seeds, short training)
-	$(PY) scripts/train.py --config configs/quick.yaml
-train:        ## main experiment: RecurrentPPO, 5 seeds, walk-forward
-	$(PY) scripts/train.py --config configs/default.yaml
-sac:          ## challenger
-	$(PY) scripts/train.py --config configs/sac.yaml
-real:         ## 50-name multi-asset universe from yfinance
-	$(PY) scripts/train.py --config configs/yfinance.yaml
-hpo:          ## optuna on the validation block
-	$(PY) scripts/hpo.py --config configs/quick.yaml --trials 20
-frontier:     ## execution / market making / deep hedging vs classical baselines
-	$(PY) scripts/frontier.py --task all
-shadow:       ## daily loop in shadow mode (MODEL=runs/<run>/fold_0)
-	$(PY) scripts/shadow_run.py --model $(MODEL) --broker shadow
-offline:      ## offline RL from the decision log
-	$(PY) scripts/offline_run.py --from-backtest
+snapshot:    ## hashed point-in-time data snapshot (SOURCE=sharadar DIR=vendor/sharadar)
+	$(PY) scripts/snapshot.py build --source $(or $(SOURCE),synthetic_pit) $(if $(DIR),--dir $(DIR))
+backtest:    ## walk-forward OOS backtest of the shipped rule vs alternatives, 1x/2x/3x costs
+	$(PY) scripts/backtest_strategy.py --config configs/strategy.yaml
+fit:         ## fit the deployable state (final GBM, HMM, normaliser) -> deploy/current
+	$(PY) scripts/fit_strategy.py --config configs/strategy.yaml --out deploy/current
+shadow:      ## daily loop, shadow mode (sends no orders)
+	$(PY) scripts/shadow_run.py --deploy deploy/current --broker shadow
+paper:       ## daily loop against the local paper broker
+	$(PY) scripts/shadow_run.py --deploy deploy/current --broker paper
+
+# ---- archived research: RL allocator (did not beat the shipped rule) ----
+research-sanity:  ## planted/noise/accounting sanity tests for the RL allocator
+	$(PY) $(RL)/scripts/sanity.py
+research-ab:      ## Ticket 3 turnover A/B
+	$(PY) $(RL)/scripts/ab_turnover.py --workers 4
+
 clean:
-	rm -rf runs live_state data_cache .pytest_cache
+	rm -rf runs live_state deploy data_cache .pytest_cache

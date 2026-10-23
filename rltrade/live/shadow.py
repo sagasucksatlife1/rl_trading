@@ -1,12 +1,14 @@
 """The daily production loop (shadow / paper / live share the same code path).
 
+Runs the shipped strategy (rltrade/strategy.py: GBM score -> linear weights, no-trade
+band, risk overlay) from a deployment directory written by `scripts/fit_strategy.py`.
+
 Per run, after the close of day T:
   1. load data through T, rebuild features with the FROZEN feature state
-     (normaliser, HMM, latest GBM model) of the deployed model
-  2. warm the policy up by replaying the last `warmup` days (recurrent state,
-     and a simulated track for live-vs-backtest tracking error)
+     (normaliser, HMM, final GBM model) of the deployment
+  2. replay the last `warmup` days for a simulated track (live-vs-backtest tracking error)
   3. build the observation at T from the broker's ACTUAL positions
-  4. policy -> no-trade band -> risk overlay (with persisted kill-switch state)
+  4. strategy target -> risk overlay (persisted kill-switch state) -> no-trade band
   5. orders to the broker (ShadowBroker sends nothing)
   6. log the decision; fill yesterday's reward with today's realised return
   7. drift monitoring + daily report
@@ -22,7 +24,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from rltrade.agents.sb3_agents import Ensemble, SB3Policy
 from rltrade.config import cfg_get
 from rltrade.data.synthetic import Market
 from rltrade.envs.portfolio import EnvData
@@ -34,22 +35,19 @@ from rltrade.live.broker import Broker
 from rltrade.live.decision_log import DecisionLog
 from rltrade.live.monitor import feature_drift, tracking_error
 from rltrade.pipeline import make_env
+from rltrade.strategy import GBMBandStrategy
 
 log = logging.getLogger(__name__)
 
 
-def load_deployment(model_dir: Path) -> tuple[Ensemble, dict]:
-    model_dir = Path(model_dir)
-    with open(model_dir / "feature_state.pkl", "rb") as f:
+def load_deployment(deploy_dir: Path) -> tuple[GBMBandStrategy, dict]:
+    with open(Path(deploy_dir) / "feature_state.pkl", "rb") as f:
         fstate = pickle.load(f)
-    seeds = sorted(model_dir.glob("seed_*/model.zip"))
-    vals = []
-    for p in seeds:
-        meta = json.loads((p.parent / "meta.json").read_text())
-        vals.append((meta.get("val_sharpe", -np.inf), p.parent))
-    vals.sort(key=lambda x: x[0], reverse=True)
-    k = fstate.get("top_k", 3)
-    return Ensemble([SB3Policy.load(p) for _, p in vals[:k]]), fstate
+    return GBMBandStrategy(**fstate["strategy"]), fstate
+
+
+def _train_rows(fstate: dict) -> tuple[int, int]:
+    return tuple(fstate["train_rows"]) if "train_rows" in fstate else tuple(fstate["fold"].train)
 
 
 def live_envdata(market: Market, fstate: dict, cfg: dict) -> EnvData:
@@ -57,34 +55,36 @@ def live_envdata(market: Market, fstate: dict, cfg: dict) -> EnvData:
     model = fstate.get("gbm_model")
     if model is not None:
         T, N, F = fs.asset.shape
-        ok = np.isfinite(fs.asset).all(axis=(1, 2))
+        F = fstate.get("n_raw_features", F)
+        ok = np.isfinite(fs.asset[:, :, :F]).all(axis=(1, 2))
         pred = np.full((T, N), np.nan)
-        pred[ok] = model.predict(fs.asset[ok].reshape(-1, F)).reshape(-1, N)
+        pred[ok] = model.predict(fs.asset[ok][:, :, :F].reshape(-1, F)).reshape(-1, N)
+        if market.tradable is not None:
+            pred = np.where(market.tradable_mask(), pred, np.nan)
         mu, sd = np.nanmean(pred, 1, keepdims=True), np.nanstd(pred, 1, keepdims=True) + 1e-12
         fs.add_asset_feature("gbm_score", (pred - mu) / sd)
         fs.add_asset_feature("gbm_rank", _xs_rank(pred))
         fs.add_asset_feature("gbm_conf", np.zeros((T, N)))
-    fold = fstate["fold"]
     if "p_turbulent" in fstate["glob_names"]:
-        add_regime_features(fs, market.close, slice(*fold.train), seed=cfg_get(cfg, "seed", 0))
+        add_regime_features(fs, market.close, slice(*_train_rows(fstate)), seed=cfg_get(cfg, "seed", 0),
+                            tradable=market.tradable)
     norm = Normalizer.from_state(fstate["normalizer"])
     return EnvData.build(market, norm.transform(fs), fs.first_valid(), fstate["feature_names"])
 
 
-def run_daily(cfg: dict, model_dir: Path, market: Market, broker: Broker, state_dir: Path,
+def run_daily(cfg: dict, deploy_dir: Path, market: Market, broker: Broker, state_dir: Path,
               warmup: int = 126) -> dict:
     state_dir = Path(state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
-    policy, fstate = load_deployment(model_dir)
+    policy, fstate = load_deployment(deploy_dir)
     data = live_envdata(market, fstate, cfg)
     T = data.n_rows
     today = pd.Timestamp(data.dates[-1])
     dlog = DecisionLog(state_dir / "decisions.jsonl")
 
-    # 2. warm-up replay on the last `warmup` days (decision rows up to T-3)
+    # 2. replay the last `warmup` days (decision rows up to T-3): the simulated track
     env = make_env(data, (max(data.first_row, T - 3 - warmup), T), cfg, train=False)
     sim = rollout(env, policy)
-    # feed T-2 so the recurrent state is current, then decide at T-1
     prices_close = {s: float(data.close[-1, i]) for i, s in enumerate(data.assets)}
     pos = broker.positions()
     equity = broker.equity(prices_close)
@@ -98,13 +98,14 @@ def run_daily(cfg: dict, model_dir: Path, market: Market, broker: Broker, state_
     env.w_close = w_live
     env.nav_close, env.peak, env.nav_start = equity / st["start"], st["peak"] / st["start"], 1.0
     env.since_trade = st["since"]
-    env.t = T - 2
-    env._frames.append(env._obs_single(T - 2))
-    policy(env._obs(), env)
     env.t = T - 1
     env._frames.append(env._obs_single(T - 1))
     obs = env._obs()
     target, band = policy(obs, env)
+    if target is None and np.abs(w_live).sum() < 1e-6:  # new, uninvested account: enter now
+        target, band = policy.rebalance_now(obs, env)
+    if target is None:  # not a scheduled rebalance day: hold the book (forced exits still apply)
+        target, band = w_live.copy(), 0.0
 
     # 4. overlay (persisted kill-switch state) then band: same code path as the backtest env
     target = np.asarray(target)
@@ -134,8 +135,7 @@ def run_daily(cfg: dict, model_dir: Path, market: Market, broker: Broker, state_
     st_path.write_text(json.dumps(st))
 
     # 7. monitoring
-    fold = fstate["fold"]
-    tr_rows = slice(*fold.train)
+    tr_rows = slice(*_train_rows(fstate))
     drift = feature_drift(data.feats[tr_rows], data.feats[-63:], data.feat_names)
     live_r = np.array([r["realised"]["ret"] for r in dlog.records() if r.get("realised")])
     te = tracking_error(live_r, sim["r_net"].to_numpy()[-len(live_r):] if len(live_r) else np.array([]))

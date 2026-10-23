@@ -6,3 +6,4 @@ data_cache/
 .pytest_cache/
 mlruns/
 data/snapshots/
+deploy/

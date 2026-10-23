@@ -6,7 +6,7 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
  && pip install --no-cache-dir -r requirements.txt yfinance requests
 COPY . .
 RUN python -m pytest -q
-# Daily job: mount runs/ (models) and live_state/ (decision log, paper account) as volumes.
+# Daily job: mount deploy/ (fitted strategy state) and live_state/ (decision log, paper account) as volumes.
 # Secrets (ALPACA_KEY_ID / ALPACA_SECRET_KEY) come from the environment, never the image.
-ENTRYPOINT ["python", "scripts/shadow_run.py"]
+ENTRYPOINT ["python", "scripts/shadow_run.py", "--deploy", "deploy/current"]
 CMD ["--help"]

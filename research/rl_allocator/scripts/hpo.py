@@ -2,11 +2,11 @@
 (never test). Every trial is logged to runs/trials.jsonl, so the deflated Sharpe
 of the final model is corrected for the full search.
 
-    python scripts/hpo.py --config configs/quick.yaml --trials 20
+    python research/rl_allocator/scripts/hpo.py --config research/rl_allocator/configs/quick.yaml --trials 20
 """
 from _common import parse
 
-from rltrade.agents.sb3_agents import train_seed
+from research.rl_allocator.agents.sb3_agents import train_seed
 from rltrade.config import cfg_get, set_dotted
 from rltrade.eval.splits import chrono_split
 from rltrade.pipeline import build_dataset, fold_envdata, make_env

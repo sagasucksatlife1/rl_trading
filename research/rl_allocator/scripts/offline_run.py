@@ -1,7 +1,7 @@
 """Offline RL from the decision log (CQL/IQL via d3rlpy; behaviour cloning fallback).
 
-    python scripts/offline_run.py --log live_state/decisions.jsonl --algo cql
-    python scripts/offline_run.py --from-backtest     # dev: logs from a noisy baseline
+    python research/rl_allocator/scripts/offline_run.py --log live_state/decisions.jsonl --algo cql
+    python research/rl_allocator/scripts/offline_run.py --from-backtest     # dev: logs from a noisy baseline
 """
 import numpy as np
 from _common import ROOT, parse
@@ -11,7 +11,7 @@ from rltrade.eval.metrics import sharpe
 from rltrade.eval.rollout import rollout
 from rltrade.eval.splits import chrono_split
 from rltrade.live.decision_log import DecisionLog
-from rltrade.live.offline import bc_fit, collect_transitions, train_offline
+from research.rl_allocator.offline import bc_fit, collect_transitions, train_offline
 from rltrade.pipeline import build_dataset, fold_envdata, make_env
 
 
@@ -22,7 +22,7 @@ def main():
         ap.add_argument("--from-backtest", action="store_true")
         ap.add_argument("--steps", type=int, default=20000)
 
-    args, cfg = parse(__doc__, default_config="configs/quick.yaml", extra=extra)
+    args, cfg = parse(__doc__, default_config="research/rl_allocator/configs/quick.yaml", extra=extra)
     market, fs = build_dataset(cfg)
     fold = chrono_split(fs.first_valid(), len(market.dates))
     data, _ = fold_envdata(market, fs, fold.train, cfg)

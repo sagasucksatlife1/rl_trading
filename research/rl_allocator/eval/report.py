@@ -40,7 +40,7 @@ def _table(df: pd.DataFrame) -> str:
 def trial_stats(cfg: dict, data_hash: str) -> dict:
     """Distinct configs + their per-period validation Sharpes, from MLflow."""
     try:
-        from rltrade.eval.walkforward import mlflow_setup
+        from research.rl_allocator.eval.walkforward import mlflow_setup
 
         mlflow = mlflow_setup(cfg)
         runs = mlflow.search_runs(filter_string=f"tags.kind = 'seed_run' and tags.data_hash = '{data_hash}'",
@@ -151,7 +151,7 @@ def build_report(cfg: dict, variant: str, fold_outs: list[dict], out: Path, data
            "gate": {"median_seed_2x": med2, "baseline_2x": base2, "ensemble_2x": ens2}}
     (out / "report.json").write_text(json.dumps(res, indent=2, default=float))
     try:
-        from rltrade.eval.walkforward import mlflow_setup
+        from research.rl_allocator.eval.walkforward import mlflow_setup
 
         mlflow = mlflow_setup(cfg)
         with mlflow.start_run(run_name=f"{variant}_summary"):

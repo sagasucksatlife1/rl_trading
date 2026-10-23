@@ -40,7 +40,7 @@ def make_model(algo: str, venv, cfg: dict, seed: int):
     extra_pk = hp.pop("policy_kwargs", {}) or {}
     common = dict(seed=seed, verbose=0, device="cpu")
     if algo == "ppo" and hp.pop("shared_asset_policy", False):
-        from rltrade.agents.policies import AssetSharedPolicy
+        from research.rl_allocator.agents.policies import AssetSharedPolicy
 
         get = lambda a: venv.get_attr(a)[0]
         c = get("c")
@@ -123,10 +123,26 @@ class SB3Policy:
 
 
 class Ensemble:
-    """Average the target weights (and band) of several policies."""
+    """Combine several policies into one target.
 
-    def __init__(self, members: list):
-        self.members = members
+    Three rules, all measured on the same Ticket 4 dry-run seeds (Sharpe at 2x costs,
+    turnover/yr; the median single seed scored 0.54 at 21.7x):
+      mean          (default) average raw targets, then band once         0.29   5.3x
+      median_banded per-asset median of each member's banded target      -0.10  32.5x
+      majority      trade an asset only if most members' bands say so,    0.09   2.4x
+                    voting on overlay-projected (executable) targets
+    No rule beats the median seed: the seeds disagree about WHICH assets to trade, so
+    any combination either churns or freezes. Decisions therefore use the median seed
+    (see eval/report.py); the ensemble is reported for completeness only.
+    """
+
+    # absorbs the open-vs-close drift between the book the members saw and the one traded
+    DRIFT_BAND = 0.002
+
+    def __init__(self, members: list, mode: str = "mean"):
+        if mode not in ("majority", "median_banded", "mean"):
+            raise ValueError(mode)
+        self.members, self.mode = members, mode
 
     def reset(self):
         for m in self.members:
@@ -135,7 +151,23 @@ class Ensemble:
 
     def __call__(self, obs, env):
         ws, bs = zip(*[m(obs, env) for m in self.members])
-        return np.mean(ws, axis=0), float(np.mean(bs))
+        if self.mode == "mean":
+            return np.mean(ws, axis=0), float(np.mean(bs))
+        long_only = env.c["action_mode"] == "long_only"
+        cur = env.w_close
+        # vote on what each member could actually execute (overlay-projected), never on raw
+        # targets: raw targets above a cap "want to trade" forever (the band-order bug again)
+        W = np.asarray([env.project(w, cur) for w in ws])
+        trade = np.abs(W - cur) >= np.asarray(bs)[:, None]  # [members, assets]: member wants to trade
+        if self.mode == "median_banded":
+            w = np.median(np.where(trade, W, cur), axis=0)
+        else:
+            maj = trade.sum(0) > len(self.members) / 2
+            mean_tr = (W * trade).sum(0) / np.maximum(trade.sum(0), 1)
+            w = np.where(maj, mean_tr, cur)
+        if long_only and w.sum() > 1.0:
+            w = w / w.sum()
+        return w, self.DRIFT_BAND
 
 
 def _save(model, rms, path: Path, algo: str, extra: dict) -> None:

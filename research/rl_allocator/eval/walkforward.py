@@ -77,7 +77,7 @@ def _seed_job(job: dict) -> dict:
 
     warnings.filterwarnings("ignore")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
-    from rltrade.agents.sb3_agents import SB3Policy, train_seed
+    from research.rl_allocator.agents.sb3_agents import SB3Policy, train_seed
 
     cfg, data, fold, seed, out = job["cfg"], job["data"], job["fold"], job["seed"], Path(job["out"])
     t0 = time.time()
@@ -109,9 +109,9 @@ def _seed_job(job: dict) -> dict:
 
 # ----------------------------------------------------------------------------- grid
 def run_grid(cfg: dict, variant: str, workers: int = 4, out_root: Path | None = None) -> dict:
-    from rltrade.agents.sb3_agents import Ensemble, SB3Policy
+    from research.rl_allocator.agents.sb3_agents import Ensemble, SB3Policy
     from rltrade.baselines.rules import baseline_suite
-    from rltrade.eval.report import build_report
+    from research.rl_allocator.eval.report import build_report
 
     market, fs = build_dataset(cfg)
     data_hash = market.data_hash()

@@ -4,7 +4,7 @@
   market_making  RL quoter vs Avellaneda-Stoikov (P&L, inventory) in a simulated LOB
   hedging        deep hedging vs Black-Scholes delta under costs (CVaR of hedging error)
 
-    python scripts/frontier.py --task execution --steps 200000
+    python research/rl_allocator/scripts/frontier.py --task execution --steps 200000
 """
 import json
 
@@ -30,7 +30,7 @@ def main():
                                               ap.add_argument("--steps", type=int, default=200_000)))
     res = {}
     if args.task in ("all", "execution"):
-        from rltrade.envs.execution import TWAP, AlmgrenChriss, ExecutionEnv, evaluate_execution
+        from research.rl_allocator.envs.execution import TWAP, AlmgrenChriss, ExecutionEnv, evaluate_execution
 
         env = ExecutionEnv(seed=123)
         rl = _train(lambda s: ExecutionEnv(seed=s), args.steps)
@@ -38,14 +38,14 @@ def main():
                             "almgren_chriss": evaluate_execution(env, AlmgrenChriss(env)),
                             "rl_ppo": evaluate_execution(env, rl)}
     if args.task in ("all", "market_making"):
-        from rltrade.envs.market_making import AvellanedaStoikov, MarketMakingEnv, evaluate_mm
+        from research.rl_allocator.envs.market_making import AvellanedaStoikov, MarketMakingEnv, evaluate_mm
 
         env = MarketMakingEnv(seed=123)
         rl = _train(lambda s: MarketMakingEnv(seed=s), args.steps)
         res["market_making"] = {"avellaneda_stoikov": evaluate_mm(env, AvellanedaStoikov(env)),
                                 "rl_ppo": evaluate_mm(env, rl)}
     if args.task in ("all", "hedging"):
-        from rltrade.envs.hedging import BSDelta, HedgingEnv, evaluate_hedging
+        from research.rl_allocator.envs.hedging import BSDelta, HedgingEnv, evaluate_hedging
 
         env = HedgingEnv(seed=123)
         rl = _train(lambda s: HedgingEnv(seed=s), args.steps)

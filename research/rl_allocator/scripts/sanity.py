@@ -5,8 +5,8 @@
   3. accounting:         env P&L == independent share-based backtest, to the cent
   4. from-scratch agents: tabular Q-learning and DQN on the single-asset planted env
 
-    python scripts/sanity.py            # all
-    python scripts/sanity.py --only accounting
+    python research/rl_allocator/scripts/sanity.py            # all
+    python research/rl_allocator/scripts/sanity.py --only accounting
 """
 import numpy as np
 from _common import ROOT, parse
@@ -28,7 +28,7 @@ def _prep(cfg):
 
 
 def accounting():
-    cfg = load_config(ROOT / "configs/quick.yaml")
+    cfg = load_config(ROOT / "research/rl_allocator/configs/quick.yaml")
     _, fold, data = _prep(cfg)
     env = make_env(data, fold.test, cfg, train=False, overlay=True)
     obs, _ = env.reset()
@@ -48,7 +48,7 @@ def accounting():
 
 
 def rl_sanity(config: str, expect_edge: bool):
-    from rltrade.agents.sb3_agents import SB3Policy, train_seed
+    from research.rl_allocator.agents.sb3_agents import SB3Policy, train_seed
     from rltrade.baselines.rules import EqualWeight
 
     cfg = load_config(ROOT / config)
@@ -73,10 +73,10 @@ def rl_sanity(config: str, expect_edge: bool):
 
 
 def scratch_agents():
-    from rltrade.agents.tabular_q import TabularQ
-    from rltrade.envs.single_asset import DiscretePositionEnv, TabularDiscretizer
+    from research.rl_allocator.agents.tabular_q import TabularQ
+    from research.rl_allocator.envs.single_asset import DiscretePositionEnv, TabularDiscretizer
 
-    cfg = load_config(ROOT / "configs/sanity_planted.yaml")
+    cfg = load_config(ROOT / "research/rl_allocator/configs/sanity_planted.yaml")
     _, fold, data = _prep(cfg)
     mk = lambda train, rows, seed=0: DiscretePositionEnv(data, rows, asset=0, train=train,
                                                          cfg={"episode_len": 252}, reward={"kind": "log"},
@@ -100,7 +100,7 @@ def scratch_agents():
     s_long = run(lambda o: 2)
     print(f"[tabular-q] test Sharpe {s_q:.2f} vs always-long {s_long:.2f}")
     try:
-        from rltrade.agents.dqn import DQNAgent
+        from research.rl_allocator.agents.dqn import DQNAgent
     except ImportError:
         print("[dqn] torch not installed; skipped")
         return True
@@ -121,9 +121,9 @@ def main():
     if args.only in (None, "scratch"):
         results["scratch"] = scratch_agents()
     if args.only in (None, "planted"):
-        results["planted"] = rl_sanity("configs/sanity_planted.yaml", True)
+        results["planted"] = rl_sanity("research/rl_allocator/configs/sanity_planted.yaml", True)
     if args.only in (None, "noise"):
-        results["noise"] = rl_sanity("configs/sanity_noise.yaml", False)
+        results["noise"] = rl_sanity("research/rl_allocator/configs/sanity_noise.yaml", False)
     print("\nSANITY:", {k: ("ran" if k == "scratch" else "PASS" if v else "FAIL") for k, v in results.items()})
 
 

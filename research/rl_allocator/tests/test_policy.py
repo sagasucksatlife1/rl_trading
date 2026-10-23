@@ -6,7 +6,7 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("stable_baselines3")
 
-from rltrade.agents.policies import AssetSharedExtractor, layout_from_env  # noqa: E402
+from research.rl_allocator.agents.policies import AssetSharedExtractor, layout_from_env  # noqa: E402
 from rltrade.pipeline import make_env  # noqa: E402
 
 

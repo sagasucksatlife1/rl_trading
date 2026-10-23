@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from rltrade.agents.sb3_agents import Ensemble, SB3Policy, train_seed
+from research.rl_allocator.agents.sb3_agents import Ensemble, SB3Policy, train_seed
 from rltrade.baselines.rules import baseline_suite
 from rltrade.config import cfg_get
 from rltrade.eval.dsr import deflated_sharpe

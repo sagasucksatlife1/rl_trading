@@ -161,6 +161,14 @@ class PortfolioEnv(gym.Env):
             w = w / w.sum()
         return w
 
+    def project(self, target: np.ndarray, current: np.ndarray) -> np.ndarray:
+        """What the overlay would let `target` become right now, without touching any state
+        (no NAV update, no band). Used by ensembles to vote on EXECUTABLE targets."""
+        w = np.where(self.tradable_now(), np.asarray(target, dtype=np.float64), 0.0)
+        if self.overlay is not None:
+            w, _ = self.overlay.apply(w, current, self._cov(self.t))
+        return np.where(self.tradable_now(), w, 0.0)
+
     def execute_target(self, target: np.ndarray, current: np.ndarray, band: float, t: int,
                        update_nav: bool = True) -> tuple[np.ndarray, dict]:
         """Policy target -> executed weights. Shared by the backtest env and the live loop.

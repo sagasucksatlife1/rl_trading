@@ -1,10 +1,10 @@
 import numpy as np
 from gymnasium.utils.env_checker import check_env
 
-from rltrade.envs.execution import TWAP, AlmgrenChriss, ExecutionEnv, evaluate_execution
-from rltrade.envs.hedging import BSDelta, HedgingEnv, evaluate_hedging
-from rltrade.envs.market_making import AvellanedaStoikov, MarketMakingEnv, evaluate_mm
-from rltrade.envs.single_asset import DiscretePositionEnv, TabularDiscretizer
+from research.rl_allocator.envs.execution import TWAP, AlmgrenChriss, ExecutionEnv, evaluate_execution
+from research.rl_allocator.envs.hedging import BSDelta, HedgingEnv, evaluate_hedging
+from research.rl_allocator.envs.market_making import AvellanedaStoikov, MarketMakingEnv, evaluate_mm
+from research.rl_allocator.envs.single_asset import DiscretePositionEnv, TabularDiscretizer
 from rltrade.pipeline import make_env
 
 

@@ -1,13 +1,13 @@
 """Main experiment: data -> features -> GBM signal -> RL seeds -> ensemble -> OOS report.
 
-    python scripts/train.py --config configs/quick.yaml
-    python scripts/train.py --config configs/default.yaml agent.algo=sac split.mode=single
+    python research/rl_allocator/scripts/train.py --config research/rl_allocator/configs/quick.yaml
+    python research/rl_allocator/scripts/train.py --config research/rl_allocator/configs/default.yaml agent.algo=sac split.mode=single
 """
 from _common import parse
 
 from rltrade.config import cfg_get
 from rltrade.eval.splits import chrono_split, walk_forward
-from rltrade.experiment import report, run_fold
+from research.rl_allocator.experiment import report, run_fold
 from rltrade.pipeline import build_dataset
 from rltrade.tracking import Tracker
 

@@ -1,6 +1,6 @@
 """Rebuild report(s) from saved grid results without retraining (e.g. after a report-code change).
 
-    python scripts/rereport.py runs/grids/<grid_id> [more grid dirs...] [--ab-out runs/ab/<stamp>]
+    python research/rl_allocator/scripts/rereport.py runs/grids/<grid_id> [more grid dirs...] [--ab-out runs/ab/<stamp>]
 """
 import argparse
 import json
@@ -8,9 +8,9 @@ import pickle
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from rltrade.eval.report import build_report, compare_variants  # noqa: E402
+from research.rl_allocator.eval.report import build_report, compare_variants  # noqa: E402
 
 
 def main():

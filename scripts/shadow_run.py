@@ -1,8 +1,9 @@
 """Daily production loop. Run after the close (cron / scheduled container).
 
-    python scripts/shadow_run.py --model runs/<run>/fold_0 --broker shadow
-    python scripts/shadow_run.py --model runs/<run>/fold_0 --broker paper
-    python scripts/shadow_run.py --model runs/<run>/fold_0 --broker alpaca   # ALPACA_* env vars
+    python scripts/fit_strategy.py --out deploy/current                       # once / on refit
+    python scripts/shadow_run.py --deploy deploy/current --broker shadow       # sends nothing
+    python scripts/shadow_run.py --deploy deploy/current --broker paper
+    python scripts/shadow_run.py --deploy deploy/current --broker alpaca       # ALPACA_* env vars
 
 `--replay-days N` replays the loop over the last N days of history (useful to
 test the loop end to end, and to generate a decision log for offline RL).
@@ -20,20 +21,19 @@ from rltrade.pipeline import make_cost
 
 def main():
     def extra(ap):
-        ap.add_argument("--model", required=True)
+        ap.add_argument("--deploy", default="deploy/current")
         ap.add_argument("--broker", default="shadow", choices=["shadow", "paper", "alpaca"])
         ap.add_argument("--state", default="live_state")
         ap.add_argument("--replay-days", type=int, default=0)
         ap.add_argument("--capital", type=float, default=1e6)
 
-    args, cfg = parse(__doc__, extra=extra)
-    import yaml
+    args, cfg = parse(__doc__, default_config="configs/strategy.yaml", extra=extra)
     from pathlib import Path
 
-    model_dir = Path(args.model)
-    run_cfg = model_dir.parent / "config.yaml"
-    if run_cfg.exists():  # use the exact config the model was trained with
-        cfg = yaml.safe_load(run_cfg.read_text())
+    model_dir = ROOT / args.deploy
+    dep_cfg = model_dir / "config.json"
+    if dep_cfg.exists():  # use the exact config the deployment was fitted with
+        cfg = json.loads(dep_cfg.read_text())
     market = load_market(cfg)
     state = ROOT / args.state
     if args.broker == "paper":

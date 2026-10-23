@@ -9,15 +9,15 @@
 Each variant re-runs the full baseline comparison (1/N, GBM-linear, GBM-MV,
 GBM+no-trade-band). Output: runs/ab/<stamp>/ab_comparison.md
 
-    python scripts/ab_turnover.py --config configs/full.yaml --workers 4 agent.total_steps=200000
+    python research/rl_allocator/scripts/ab_turnover.py --config research/rl_allocator/configs/full.yaml --workers 4 agent.total_steps=200000
 """
 import json
 import time
 
 from _common import ROOT, parse
 
-from rltrade.eval.report import compare_variants
-from rltrade.eval.walkforward import quick_cfg, run_grid
+from research.rl_allocator.eval.report import compare_variants
+from research.rl_allocator.eval.walkforward import quick_cfg, run_grid
 
 VARIANTS = {
     "baseline_dsr_learned_band": {"reward.kind": "dsr", "env.learned_band": True},
@@ -35,7 +35,7 @@ def main():
         ap.add_argument("--kappa", type=float, default=0.002)
         ap.add_argument("--only", nargs="*", default=None)
 
-    args, cfg = parse(__doc__, default_config="configs/full.yaml", extra=extra)
+    args, cfg = parse(__doc__, default_config="research/rl_allocator/configs/full.yaml", extra=extra)
     out = ROOT / "runs" / "ab" / time.strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     reports = []
