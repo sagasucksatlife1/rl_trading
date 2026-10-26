@@ -31,7 +31,11 @@ def _make_model(params: dict):
                  subsample=0.8, subsample_freq=1, colsample_bytree=0.8, reg_lambda=1.0, verbose=-1)
         p.update(params)
         return lgb.LGBMRegressor(**p)
-    except ImportError:
+    except (ImportError, OSError) as e:
+        # OSError: LightGBM is installed but its native library can't load (on macOS this
+        # means `brew install libomp` is missing). Same model family, slower, no crash.
+        log.warning("LightGBM unavailable (%s); using scikit-learn HistGradientBoosting. "
+                    "On macOS: brew install libomp", str(e).splitlines()[0][:120])
         from sklearn.ensemble import HistGradientBoostingRegressor
 
         return HistGradientBoostingRegressor(max_iter=200, learning_rate=0.05, max_leaf_nodes=15,
