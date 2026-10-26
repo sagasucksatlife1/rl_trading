@@ -30,6 +30,7 @@ Evidence: [`results/`](results/).
 ## Quick start
 
 ```bash
+brew install libomp          # macOS only: LightGBM needs it
 pip install -r requirements.txt
 make test        # 34 tests: look-ahead, accounting, PIT adjustment, overlay, band order, env (+ archived research)
 make backtest    # walk-forward OOS backtest of the shipped rule vs alternatives -> results/strategy_backtest/
